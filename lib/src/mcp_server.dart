@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:image/image.dart' as img;
 
 import 'flutter_driver_client.dart';
 
@@ -384,9 +387,10 @@ class McpServer {
       case 'screenshot':
         _ensureConnected();
         final bytes = await _driverClient!.screenshot();
+        final resizedBytes = _resizeImageIfNeeded(bytes);
         return {
           'type': 'image',
-          'data': base64Encode(bytes),
+          'data': base64Encode(resizedBytes),
           'mimeType': 'image/png',
         };
 
@@ -431,5 +435,34 @@ class McpServer {
       default:
         throw Exception('Unknown finder type: $finderType');
     }
+  }
+
+  /// Resize image if dimensions exceed max size for Claude API multi-image requests
+  Uint8List _resizeImageIfNeeded(Uint8List bytes) {
+    const maxDimension = 2000;
+
+    final image = img.decodeImage(bytes);
+    if (image == null) {
+      return bytes;
+    }
+
+    if (image.width <= maxDimension && image.height <= maxDimension) {
+      return bytes;
+    }
+
+    // Calculate new dimensions maintaining aspect ratio
+    int newWidth;
+    int newHeight;
+
+    if (image.width > image.height) {
+      newWidth = maxDimension;
+      newHeight = (image.height * maxDimension / image.width).round();
+    } else {
+      newHeight = maxDimension;
+      newWidth = (image.width * maxDimension / image.height).round();
+    }
+
+    final resized = img.copyResize(image, width: newWidth, height: newHeight);
+    return Uint8List.fromList(img.encodePng(resized));
   }
 }
