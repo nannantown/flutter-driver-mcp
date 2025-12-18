@@ -13,18 +13,19 @@ class McpServer {
   McpServer({this.logFile});
 
   void _log(String message) {
-    final timestamp = DateTime.now().toIso8601String();
-    final logMessage = '[$timestamp] $message';
-    _logSink?.writeln(logMessage);
-    stderr.writeln(logMessage);
+    // Logging disabled during stdio MCP transport
+    // Uncomment for debugging: print to file directly
+    // try {
+    //   final timestamp = DateTime.now().toIso8601String();
+    //   File('/tmp/flutter-driver-mcp.log').writeAsStringSync(
+    //     '[$timestamp] $message\n',
+    //     mode: FileMode.append,
+    //   );
+    // } catch (_) {}
   }
 
   Future<void> run() async {
-    if (logFile != null) {
-      _logSink = File(logFile!).openWrite();
-    }
-
-    _log('Flutter Driver MCP Server starting...');
+    // Note: Logging disabled for stdio MCP transport compatibility
 
     // Listen for JSON-RPC messages on stdin
     final inputStream = stdin.transform(utf8.decoder).transform(const LineSplitter());

@@ -62,6 +62,12 @@ class FlutterDriverClient {
     for (var i = 0; i < maxAttempts; i++) {
       try {
         final result = await _callExtension('get_health', {});
+        // Response structure: {isError: false, response: {status: ok}, ...}
+        final response = result['response'];
+        if (response is Map && response['status'] == 'ok') {
+          return;
+        }
+        // Also check top-level status for compatibility
         if (result['status'] == 'ok') {
           return;
         }
@@ -109,6 +115,13 @@ class FlutterDriverClient {
 
     if (result['isError'] == true) {
       throw Exception(result['response'] ?? 'Unknown error');
+    }
+
+    // Flutter Driver responses have data nested in 'response' field
+    // Return the nested response if present, otherwise return the full result
+    final nestedResponse = result['response'];
+    if (nestedResponse is Map<String, dynamic>) {
+      return nestedResponse;
     }
 
     return result;
@@ -160,7 +173,8 @@ class FlutterDriverClient {
   /// Take a screenshot
   Future<Uint8List> screenshot() async {
     final result = await _callExtension('screenshot', {});
-    final base64Data = result['screenshot'] as String;
+    // Screenshot response uses 'data' key (not 'screenshot')
+    final base64Data = result['data'] as String;
     return base64Decode(base64Data);
   }
 
