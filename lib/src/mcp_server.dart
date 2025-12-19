@@ -576,6 +576,69 @@ class McpServer {
               'required': ['ancestor_finder_type', 'descendant_finder_type'],
             },
           },
+          // === DEVELOPMENT TOOLS (hot reload, errors, etc.) ===
+          {
+            'name': 'hot_reload',
+            'description': 'Perform a hot reload of the Flutter app. Applies code changes without losing app state.',
+            'inputSchema': {
+              'type': 'object',
+              'properties': {},
+            },
+          },
+          {
+            'name': 'hot_restart',
+            'description': 'Perform a hot restart of the Flutter app. Resets app state completely but faster than full restart.',
+            'inputSchema': {
+              'type': 'object',
+              'properties': {},
+            },
+          },
+          {
+            'name': 'get_runtime_errors',
+            'description': 'Get any runtime errors or exceptions from the Flutter app.',
+            'inputSchema': {
+              'type': 'object',
+              'properties': {},
+            },
+          },
+          {
+            'name': 'get_app_state',
+            'description': 'Get the current state of the connected Flutter app (isolate info, paused status, etc.).',
+            'inputSchema': {
+              'type': 'object',
+              'properties': {},
+            },
+          },
+          {
+            'name': 'set_widget_selection',
+            'description': 'Enable or disable widget selection mode. When enabled, tapping in the app will select widgets for inspection.',
+            'inputSchema': {
+              'type': 'object',
+              'properties': {
+                'enabled': {
+                  'type': 'boolean',
+                  'description': 'Whether to enable widget selection mode',
+                },
+              },
+              'required': ['enabled'],
+            },
+          },
+          {
+            'name': 'get_selected_widget',
+            'description': 'Get information about the currently selected widget (when widget selection mode is enabled).',
+            'inputSchema': {
+              'type': 'object',
+              'properties': {},
+            },
+          },
+          {
+            'name': 'resume',
+            'description': 'Resume app execution if it is paused (e.g., on a breakpoint or exception).',
+            'inputSchema': {
+              'type': 'object',
+              'properties': {},
+            },
+          },
         ],
       },
     };
@@ -941,6 +1004,47 @@ class McpServer {
             await _driverClient!.waitFor(combinedFinder, timeout: timeout);
             return 'Found descendant widget';
         }
+
+      // === DEVELOPMENT TOOLS ===
+      case 'hot_reload':
+        _ensureConnected();
+        final result = await _driverClient!.hotReload();
+        return result;
+
+      case 'hot_restart':
+        _ensureConnected();
+        final result = await _driverClient!.hotRestart();
+        return result;
+
+      case 'get_runtime_errors':
+        _ensureConnected();
+        final errors = await _driverClient!.getRuntimeErrors();
+        return {
+          'errors': errors,
+          'count': errors.length,
+          'message': errors.isEmpty ? 'No runtime errors' : '${errors.length} error(s) found',
+        };
+
+      case 'get_app_state':
+        _ensureConnected();
+        final state = await _driverClient!.getAppState();
+        return state;
+
+      case 'set_widget_selection':
+        _ensureConnected();
+        final enabled = args['enabled'] as bool;
+        final result = await _driverClient!.setWidgetSelectionMode(enabled);
+        return result;
+
+      case 'get_selected_widget':
+        _ensureConnected();
+        final widget = await _driverClient!.getSelectedWidget();
+        return widget;
+
+      case 'resume':
+        _ensureConnected();
+        await _driverClient!.resume();
+        return 'App resumed';
 
       default:
         throw Exception('Unknown tool: $toolName');

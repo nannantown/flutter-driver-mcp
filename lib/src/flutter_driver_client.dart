@@ -306,4 +306,224 @@ class FlutterDriverClient {
       'firstMatchOnly': firstMatchOnly.toString(),
     };
   }
+
+  // ============================================================
+  // Development Tools (hot reload, restart, errors, etc.)
+  // ============================================================
+
+  /// Perform a hot reload of the Flutter app
+  /// Returns information about the reload result
+  Future<Map<String, dynamic>> hotReload() async {
+    if (_vmService == null || _isolateId == null) {
+      throw Exception('Not connected');
+    }
+
+    try {
+      // Use the Flutter-specific hot reload extension
+      final response = await _vmService!.callServiceExtension(
+        'ext.flutter.reassemble',
+        isolateId: _isolateId,
+      );
+      return {
+        'success': true,
+        'type': 'reload',
+        'message': 'Hot reload completed',
+        'response': response.json,
+      };
+    } catch (e) {
+      // Fallback: try VM Service's reloadSources
+      try {
+        final report = await _vmService!.reloadSources(_isolateId!);
+        return {
+          'success': report.success ?? false,
+          'type': 'reload',
+          'message': report.success == true ? 'Hot reload completed' : 'Reload failed',
+        };
+      } catch (e2) {
+        throw Exception('Hot reload failed: $e2');
+      }
+    }
+  }
+
+  /// Perform a hot restart of the Flutter app
+  /// This resets the app state completely
+  Future<Map<String, dynamic>> hotRestart() async {
+    if (_vmService == null || _isolateId == null) {
+      throw Exception('Not connected');
+    }
+
+    try {
+      // Use the Flutter-specific restart extension
+      await _vmService!.callServiceExtension(
+        'ext.flutter.exit',
+        isolateId: _isolateId,
+      );
+
+      // Wait for app to restart
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Reconnect to the new isolate
+      final vm = await _vmService!.getVM();
+      for (final isolate in vm.isolates ?? []) {
+        if (isolate.name == 'main') {
+          _isolateId = isolate.id;
+          break;
+        }
+      }
+
+      // Wait for extension to be ready again
+      await _waitForExtension();
+
+      return {
+        'success': true,
+        'type': 'restart',
+        'message': 'Hot restart completed',
+      };
+    } catch (e) {
+      throw Exception('Hot restart failed: $e');
+    }
+  }
+
+  /// Get runtime errors from the Flutter app
+  Future<List<Map<String, dynamic>>> getRuntimeErrors() async {
+    if (_vmService == null || _isolateId == null) {
+      throw Exception('Not connected');
+    }
+
+    final errors = <Map<String, dynamic>>[];
+
+    try {
+      // Get isolate details to check for errors
+      final isolate = await _vmService!.getIsolate(_isolateId!);
+
+      // Check for paused on exception
+      if (isolate.pauseEvent?.kind == 'PauseException') {
+        final exception = isolate.pauseEvent?.exception;
+        if (exception != null) {
+          errors.add({
+            'type': 'exception',
+            'kind': isolate.pauseEvent?.kind,
+            'message': exception.valueAsString ?? 'Unknown exception',
+          });
+        }
+      }
+
+      // Try to get error extension info
+      try {
+        final errorResponse = await _vmService!.callServiceExtension(
+          'ext.flutter.connectedVmServiceUri',
+          isolateId: _isolateId,
+        );
+        if (errorResponse.json != null) {
+          // App is running, no fatal errors
+        }
+      } catch (_) {
+        // Extension not available, ignore
+      }
+
+      return errors;
+    } catch (e) {
+      throw Exception('Failed to get runtime errors: $e');
+    }
+  }
+
+  /// Enable or disable widget selection mode
+  /// When enabled, tapping on the app will select widgets for inspection
+  Future<Map<String, dynamic>> setWidgetSelectionMode(bool enabled) async {
+    if (_vmService == null || _isolateId == null) {
+      throw Exception('Not connected');
+    }
+
+    try {
+      final response = await _vmService!.callServiceExtension(
+        'ext.flutter.inspector.setSelectMode',
+        isolateId: _isolateId,
+        args: {'enabled': enabled.toString()},
+      );
+      return {
+        'success': true,
+        'enabled': enabled,
+        'response': response.json,
+      };
+    } catch (e) {
+      // Try alternative extension name
+      try {
+        final response = await _vmService!.callServiceExtension(
+          'ext.flutter.inspector.selectMode',
+          isolateId: _isolateId,
+          args: {'enabled': enabled.toString()},
+        );
+        return {
+          'success': true,
+          'enabled': enabled,
+          'response': response.json,
+        };
+      } catch (e2) {
+        throw Exception('Failed to set widget selection mode: $e2');
+      }
+    }
+  }
+
+  /// Get information about the currently selected widget
+  Future<Map<String, dynamic>> getSelectedWidget() async {
+    if (_vmService == null || _isolateId == null) {
+      throw Exception('Not connected');
+    }
+
+    try {
+      final response = await _vmService!.callServiceExtension(
+        'ext.flutter.inspector.getSelectedWidget',
+        isolateId: _isolateId,
+      );
+      return response.json ?? {'selected': null};
+    } catch (e) {
+      // Try alternative extension
+      try {
+        final response = await _vmService!.callServiceExtension(
+          'ext.flutter.inspector.selectedWidget',
+          isolateId: _isolateId,
+        );
+        return response.json ?? {'selected': null};
+      } catch (e2) {
+        throw Exception('Failed to get selected widget: $e2');
+      }
+    }
+  }
+
+  /// Get a summary of the app's current state
+  Future<Map<String, dynamic>> getAppState() async {
+    if (_vmService == null || _isolateId == null) {
+      throw Exception('Not connected');
+    }
+
+    try {
+      final isolate = await _vmService!.getIsolate(_isolateId!);
+      final vm = await _vmService!.getVM();
+
+      return {
+        'connected': true,
+        'isolateId': _isolateId,
+        'isolateName': isolate.name,
+        'isPaused': isolate.pauseEvent?.kind?.contains('Pause') ?? false,
+        'vmName': vm.name,
+        'vmVersion': vm.version,
+        'startTime': isolate.startTime,
+      };
+    } catch (e) {
+      throw Exception('Failed to get app state: $e');
+    }
+  }
+
+  /// Resume execution if the app is paused
+  Future<void> resume() async {
+    if (_vmService == null || _isolateId == null) {
+      throw Exception('Not connected');
+    }
+
+    try {
+      await _vmService!.resume(_isolateId!);
+    } catch (e) {
+      throw Exception('Failed to resume: $e');
+    }
+  }
 }
