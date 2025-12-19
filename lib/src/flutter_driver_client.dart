@@ -226,10 +226,84 @@ class FlutterDriverClient {
   }
 
   /// Get widget tree diagnostics
-  Future<Map<String, dynamic>> getWidgetTree(Map<String, dynamic> finder) async {
+  Future<Map<String, dynamic>> getWidgetTree(Map<String, dynamic> finder, {
+    int? subtreeDepth,
+    bool includeProperties = false,
+  }) async {
     return await _callExtension('get_diagnostics_tree', {
       ...finder,
       'diagnosticsType': 'widget',
+      'subtreeDepth': (subtreeDepth ?? 10).toString(),
+      'includeProperties': includeProperties.toString(),
     });
+  }
+
+  /// Tap on a widget without waiting for frame to settle
+  /// This is useful when tapping triggers dialogs or animations
+  Future<void> tapNoWait(Map<String, dynamic> finder, {Duration? timeout}) async {
+    await _callExtension('tap', {
+      ...finder,
+      if (timeout != null) 'timeout': timeout.inMilliseconds.toString(),
+      // Don't wait for frame to settle after tap
+      'warnIfMissed': 'false',
+    });
+  }
+
+  /// Check if a widget exists without waiting
+  Future<bool> exists(Map<String, dynamic> finder) async {
+    try {
+      // Use very short timeout for instant check
+      await _callExtension('waitFor', {
+        ...finder,
+        'timeout': '100',
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Long press on a widget
+  Future<void> longPress(Map<String, dynamic> finder, {Duration? timeout}) async {
+    await _callExtension('scroll', {
+      ...finder,
+      'dx': '0',
+      'dy': '0',
+      'duration': '500000', // 500ms in microseconds
+      'frequency': '1',
+      if (timeout != null) 'timeout': timeout.inMilliseconds.toString(),
+    });
+  }
+
+  /// Build a Descendant finder that finds a widget matching [matching] inside [of]
+  static Map<String, dynamic> buildDescendantFinder(
+    Map<String, dynamic> of,
+    Map<String, dynamic> matching, {
+    bool matchRoot = false,
+    bool firstMatchOnly = true,
+  }) {
+    return {
+      'finderType': 'Descendant',
+      'of': of,
+      'matching': matching,
+      'matchRoot': matchRoot.toString(),
+      'firstMatchOnly': firstMatchOnly.toString(),
+    };
+  }
+
+  /// Build an Ancestor finder that finds a widget matching [matching] containing [of]
+  static Map<String, dynamic> buildAncestorFinder(
+    Map<String, dynamic> of,
+    Map<String, dynamic> matching, {
+    bool matchRoot = false,
+    bool firstMatchOnly = true,
+  }) {
+    return {
+      'finderType': 'Ancestor',
+      'of': of,
+      'matching': matching,
+      'matchRoot': matchRoot.toString(),
+      'firstMatchOnly': firstMatchOnly.toString(),
+    };
   }
 }
